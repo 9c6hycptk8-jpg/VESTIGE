@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulación Heatmap</title>
+    <style>
+        body { margin: 0; background: #111; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { background: #000; border: 1px solid #333; width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+
+    <canvas id="heatCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('heatCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Configuración inicial del canvas
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            ctx.scale(dpr, dpr);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Variables necesarias para que la función no dé error
+        let heatPoints = [];
+        let heatStartTimes = [];
+
+        // Generar algunos puntos aleatorios para que veas el efecto
+        function generateData() {
+            const colors = ['darkred', 'red', 'orange', 'yellow', 'blue', 'lightblue'];
+            for(let i = 0; i < 15; i++) {
+                heatPoints.push({
+                    x: Math.random() * window.innerWidth,
+                    y: Math.random() * window.innerHeight,
+                    v: Math.random() * 0.8 + 0.2,
+                    color: colors[Math.floor(Math.random() * colors.length)]
+                });
+            }
+            heatStartTimes.push(performance.now());
+        }
+        generateData();
+
+        // --- AQUÍ EMPIEZA TU FUNCIÓN MODIFICADA ---
+        function drawIntensity() {
+            const now = performance.now();
+            const dpr = window.devicePixelRatio || 1;
+            const w = canvas.width / dpr;
+            const h = canvas.height / dpr;
+            const step = 6;
+            const sigma = 38;
+
+            const colorRGB = {
+                darkred:   [90, 0, 0],
+                red:       [255, 30, 0],
+                orange:    [255, 140, 0],
+                yellow:    [255, 230, 80],
+                blue:      [40, 90, 255],
+                lightblue: [120, 200, 255]
+            };
+
+            function noise(x, y) {
+                const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+                return (n - Math.floor(n)) * 2 - 1;
+            }
+
+            let globalFade = 1;
+            if (heatStartTimes.length > 0) {
+                const t0 = heatStartTimes[0];
+                const t = Math.min((now - t0) / 1200, 1);
+                globalFade = t * t * (3 - 2 * t);
+            }
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = `rgba(0,0,0,${0.25 * globalFade})`;
+            ctx.fillRect(0, 0, w, h);
+
+            const maxInfluence = 95;
+
+            for (let y = 0; y < h; y += step) {
+                for (let x = 0; x < w; x += step) {
+                    let r = 0, g = 0, b = 0, total = 0;
+
+                    for (let i = 0; i < heatPoints.length; i++) {
+                        const p = heatPoints[i];
+                        const dx = x - p.x;
+                        const dy = y - p.y;
+                        const dist2 = dx * dx + dy * dy;
+
+                        if (dist2 > maxInfluence * maxInfluence) continue;
+
+                        const influence = Math.exp(-dist2 / (2 * sigma * sigma)) * p.v;
+                        const col = colorRGB[p.color] || colorRGB.blue;
+
+                        r += col[0] * influence;
+                        g += col[1] * influence;
+                        b += col[2] * influence;
+                        total += influence;
+                    }
+
+                    if (total > 0.02) {
+                        r /= total; g /= total; b /= total;
+                        const n = noise(x * 0.01, y * 0.01) * 10;
+                        r = (r + n) | 0;
+                        g = (g + n) | 0;
+                        b = (b + n) | 0;
+
+                        ctx.fillStyle = `rgba(${r},${g},${b},${0.85 * globalFade})`;
+                        ctx.fillRect(x, y, step, step);
+                    }
+                }
+            }
+
+            ctx.globalCompositeOperation = "lighter";
+            ctx.fillStyle = `rgba(255,255,255,${0.03 * globalFade})`;
+            ctx.fillRect(0, 0, w, h);
+            ctx.globalCompositeOperation = "source-over";
+
+            requestAnimationFrame(drawIntensity);
+        }
+
+        // Iniciar animación
+        drawIntensity();
+    </script>
+</body>
+</html>
